@@ -1,0 +1,40 @@
+# Requires GitHub Secrets:
+# DOCKERHUB_USERNAME
+# DOCKERHUB_PASSWORD
+
+name: Docker Build and Deploy
+on: [push]
+jobs:
+  run:
+    name: Run
+    env:
+      # name of docker repo for publishing
+      DOCKERHUB_REPO: chrismclarke/odkaggregate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+        with:
+          lfs: true
+      - name: Setup Java
+        uses: actions/setup-java@v1
+        with:
+          java-version: "8" # The JDK version to make available on the path. Takes a whole or semver JDK version, or 1.x syntax (e.g. 1.8 => Jdk 8.x). To specify a specific version for JDK 8 or older use the following pattern (8.0.x)
+          architecture: x64 # (x64 or x86) - defaults to x64
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Set default config
+        run: |
+          cp src/main/resources/jdbc.properties.example src/main/resources/jdbc.properties
+          cp src/main/resources/security.properties.example src/main/resources/security.properties
+          cp src/main/resources/odk-settings.xml.example src/main/resources/odk-settings.xml
+      - name: Build with Gradle
+        run: ./gradlew clean dockerBuild -xtest -PwarMode=complete
+      - name: Retrieve image and add additional docker tags
+        run: |
+          IMAGE_ID="$(docker image ls aggregate --format "{{.ID}}")"
+          docker tag $IMAGE_ID ${DOCKERHUB_REPO}":latest"
+      - name: Docker login and publish
+        run: |
+          echo ${{ secrets.DOCKERHUB_PASSWORD }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          docker push $DOCKERHUB_REPO
